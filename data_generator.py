@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import json
 from math import ceil, floor
-
+from sklearn.utils import shuffle
 
 class Cluster():
     def __init__(self, anchr_pt, dims, size, std_dev):
@@ -22,7 +22,7 @@ class Cluster():
                + "\n\tStd Dev: " + str(self.std_dev) + "\n")
 
 			   
-def generate_clusters(k, mu, s = 2, r = 2, d_size = 100000, d_range = (0,100), d_dim = 100, outliers = 0.05, write_to_file=False, filename = None):
+def generate_clusters(k, mu, s = 2, r = 2, d_size = 100000, d_range = (0,100), d_dim = 100, outliers = 0.05, filename = None, shuffle_rows = True):
     """Function to generate data for subspace clustering.
        Implemented as described in 'Fast Algorithms for Projected Clustering'
        
@@ -33,7 +33,9 @@ def generate_clusters(k, mu, s = 2, r = 2, d_size = 100000, d_range = (0,100), d
        d_size - Size of data to generate (# of Points/Rows). Default is 100,000.
        d_range - Range of data values. Default is [0-100]. 
        d_dim - Number of dimensions for the data. 
-       outliers - Percentage of outliers in decimal form. Default is 0.05 (5%) """
+       outliers - Percentage of outliers in decimal form. Default is 0.05 (5%)
+       filename - Name of the file to write the data to. If no filename is given, data is not written to a file.
+       shuffle_rows - Randomly shuffle the rows of the data before returning/writing to file. Default is True. """
     
             
     # Choose K anchor points uniformly in d_dim dimensional space
@@ -141,22 +143,22 @@ def generate_clusters(k, mu, s = 2, r = 2, d_size = 100000, d_range = (0,100), d
     # Fill in outlier data randomly
     outlier_pts = cluster_data[start_idx:,:]
     cluster_data[start_idx:,:] = np.random.uniform(low = d_range[0], high = d_range[1], size = outlier_pts.shape)
-    
+
     # Create a DataFrame to hold the data
-    out_df = pd.DataFrame(cluster_data)
-    # Add a cluster label column
-    out_df['clust_label'] = labels
-    
+    out_df = pd.DataFrame({"clust_label" : labels})
+    out_df = pd.concat([out_df, pd.DataFrame(cluster_data)],axis='columns')
+
+    # Shuffle the rows of the Dataframe
+    if shuffle:
+        out_df = shuffle(out_df)
+
     # Create a DataFrame for info about each cluster (anchor point, # of points, dimensions, etc)
     info_df = pd.DataFrame({"anchor_pt" : list(map(list,anchor_points)), "cluster_dims" : list(map(list,cluster_dims)), "size" : points_per_clust})
     # Name the index variable
     info_df.index.name = "cluster"
     
-    # Write to file if write_to_file is set.
-    if write_to_file:
-        if not filename:
-            raise Exception("Please specify a filename if write_to_file is set to True.")
-        
+    # If a filename is specified, write the results to files.
+    if filename:        
         out_df.to_csv(filename, index = False)        
         info_df.to_json(filename.split(".")[0] + "_clusters.json")
         
