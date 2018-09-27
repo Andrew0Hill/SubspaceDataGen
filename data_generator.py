@@ -22,7 +22,7 @@ class Cluster():
                + "\n\tStd Dev: " + str(self.std_dev) + "\n")
 
 			   
-def generate_clusters(k, mu, s = 2, r = 2, d_size = 100000, d_range = (0,100), d_dim = 100, outliers = 0.05, filename = None, shuffle_rows = True):
+def generate_clusters(k, mu, s = 2, r = 2, d_size = 100000, d_range = (0,100), d_dim = 100, outliers = 0.05, filename = None, clust_scale=0.75, shuffle_rows=True):
     """Function to generate data for subspace clustering.
        Implemented as described in 'Fast Algorithms for Projected Clustering'
        
@@ -66,7 +66,9 @@ def generate_clusters(k, mu, s = 2, r = 2, d_size = 100000, d_range = (0,100), d
         # cluster's set of dimensions
         num_prev_clsts = min(cluster_dim_nums[i-1],cluster_dim_nums[i]//2)
         # Get the number of dimensions that should be chosen as new dimensions.
+
         num_new_clsts = cluster_dim_nums[i] - num_prev_clsts
+        print(num_new_clsts)
         # Choose 'num_prev_clsts' from the previous cluster's dimensions
         prev_dims = np.random.choice(cluster_dims[i-1], num_prev_clsts, replace=False)
         cluster[0:num_prev_clsts] = prev_dims
@@ -75,24 +77,23 @@ def generate_clusters(k, mu, s = 2, r = 2, d_size = 100000, d_range = (0,100), d
         cluster[num_prev_clsts:] = np.random.choice(list(dim_set - set(prev_dims)), num_new_clsts, replace=False)
         cluster_dims.append(cluster)
     
-    # Realize k exponential random variables
-    exp_vars = np.random.exponential(size=k)
-    
+    # Generate cluster sizes
+    exp_vars = np.zeros(k)
+    exp_vars[0] = 1
+    exp_vars[1:] = (1-clust_scale)* np.random.random_sample(k-1) + clust_scale
+
     # Get the size of the data with the outliers removed
     non_otlr_size = d_size * (1 - outliers)
     
     # Get the points per cluster 
     points_per_clust = (non_otlr_size * (exp_vars / np.sum(exp_vars))).astype(int)
-    
+
     # To ensure that we generate exactly d_size data points, we add
     # pad_num = non_otlr_size - np.sum(points_per_clust) 
     # outliers to the data. The round down operation may leave us with fewer than the desired
     # number of data points, so pad the data to length with outliers. 
     pad_num = non_otlr_size - np.sum(points_per_clust)
-    
-    # Number of outliers to generate
-    outlier_num = d_size - non_otlr_size + pad_num
-    
+
     # Create the data array, which is a matrix of 'd_size' rows by 'd_dim' columns
     cluster_data = np.full((d_size,d_dim),-1,dtype="float32")
     
@@ -101,7 +102,7 @@ def generate_clusters(k, mu, s = 2, r = 2, d_size = 100000, d_range = (0,100), d
     # List of final clusters
     clusters = []
     # List of labels for each row (data point)
-    labels = np.full(d_size,-1)
+    labels = np.full(d_size,0)
     
     for i in range (0,k):
         # Get all dimensions that are not part of the cluster dimensions for this cluster
@@ -115,7 +116,7 @@ def generate_clusters(k, mu, s = 2, r = 2, d_size = 100000, d_range = (0,100), d
         std_devs = []
         
         # Assign labels
-        labels[start_idx:start_idx + points_per_clust[i]] = i
+        labels[start_idx:start_idx + points_per_clust[i]] = i+1
         
         # Iterate through dimensions for i-th cluster.
         for j in cluster_dims[i]:
@@ -146,20 +147,20 @@ def generate_clusters(k, mu, s = 2, r = 2, d_size = 100000, d_range = (0,100), d
 
     # Create a DataFrame to hold the data
     out_df = pd.DataFrame({"clust_label" : labels})
-    out_df = pd.concat([out_df, pd.DataFrame(cluster_data)],axis='columns')
+    out_df = pd.concat([pd.DataFrame(cluster_data),out_df],axis='columns')
 
     # Shuffle the rows of the Dataframe
-    if shuffle:
-        out_df = shuffle(out_df)
+    if shuffle_rows:
+        out_df = shuffle(out_df).reset_index(drop=True)
 
     # Create a DataFrame for info about each cluster (anchor point, # of points, dimensions, etc)
     info_df = pd.DataFrame({"anchor_pt" : list(map(list,anchor_points)), "cluster_dims" : list(map(list,cluster_dims)), "size" : points_per_clust})
     # Name the index variable
     info_df.index.name = "cluster"
-    
+    out_df.index.name = "subid"
     # If a filename is specified, write the results to files.
     if filename:        
-        out_df.to_csv(filename, index = False)        
+        out_df.to_csv(filename)
         info_df.to_json(filename.split(".")[0] + "_clusters.json")
         
     # Return the results
